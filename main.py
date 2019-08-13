@@ -16,7 +16,7 @@ def test(num_fill: int):
     print('Solution:')
     print_sudoku(solution)
     # Solve problem with progress shown
-    print('Solved:')
+    print('Solving:')
     solution_solved = solver.solve(puzzle, show_progress=True)
     # Print final stage
     print_sudoku(solution_solved)

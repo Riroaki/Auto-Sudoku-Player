@@ -1,9 +1,13 @@
+from copy import deepcopy
 from itertools import permutations
 from printer import print_sudoku
 
 
 class SudokuSolver(object):
     """Solve sudoku puzzles."""
+
+    # Store candidate solutions
+    _possible_solutions = {}
 
     def solve(self, puzzle: list, show_progress: bool = False) -> list:
         board = [[int(puzzle[row][col]) for col in range(9)] for row in
@@ -47,6 +51,43 @@ class SudokuSolver(object):
                                     print_sudoku(board)
             # No step could be derived: try a possible step
             if step == 0:
+                # Remove already confirmed cells from possible solutions
+                possible = {}
+                for position, values in self._possible_solutions.items():
+                    row, col = position
+                    # Cell is not confirmed yet
+                    if board[row][col] == 0:
+                        # Only one candidate left
+                        if len(values) == 1:
+                            board[row][col] = list(values)[0]
+                            step += 1
+                            if show_progress:
+                                print_sudoku(board)
+                        else:
+                            # Keep cells with multiple candidates
+                            possible[position] = values
+                self._possible_solutions = possible
+            # backtracking
+            if step == 0:
+                # Stop trying if no possible solution could be derived
+                if len(self._possible_solutions) == 0:
+                    break
+                # Sort possible solutions
+                possible = sorted(self._possible_solutions.keys(),
+                                  key=lambda k: len(
+                                      self._possible_solutions[k]))
+                # Start from cell with least possibilities
+                position = possible[0]
+                row, col = position
+                for value in self._possible_solutions[position]:
+                    # Generate another solver to deal with rest of the game
+                    sub_solver = SudokuSolver()
+                    board_copy = deepcopy(board)
+                    board_copy[row][col] = value
+                    try_solve = sub_solver.solve(board_copy, show_progress)
+                    if self._valid_all(try_solve):
+                        return try_solve
+                # Still could not solve: stop trying
                 break
         return board
 
@@ -58,30 +99,45 @@ class SudokuSolver(object):
         grid_valid = self._valid_grid(puzzle, grid)
         return row_valid and col_valid and grid_valid
 
+    def _valid_all(self, puzzle: list) -> bool:
+        # Validate all rows & columns and grids
+        for index in range(9):
+            if not self._valid_row(puzzle, index, strict=True) or \
+                    not self._valid_col(puzzle, index, strict=True) or \
+                    not self._valid_grid(puzzle, index, strict=True):
+                return False
+        return True
+
     @staticmethod
-    def _valid_row(puzzle: list, row: int) -> bool:
+    def _valid_row(puzzle: list, row: int, strict: bool = False) -> bool:
         # Validate one row
         counter = [0 for _ in range(10)]
         for col in range(9):
             counter[puzzle[row][col]] += 1
+        if strict and counter[0] != 0:
+            return False
         return len(list(filter(lambda x: x > 1, counter[1:]))) == 0
 
     @staticmethod
-    def _valid_col(puzzle: list, col: int) -> bool:
+    def _valid_col(puzzle: list, col: int, strict: bool = False) -> bool:
         # Validate one column
         counter = [0 for _ in range(10)]
         for row in range(9):
             counter[puzzle[row][col]] += 1
+        if strict and counter[0] != 0:
+            return False
         return len(list(filter(lambda x: x > 1, counter[1:]))) == 0
 
     @staticmethod
-    def _valid_grid(puzzle: list, grid: int) -> bool:
+    def _valid_grid(puzzle: list, grid: int, strict: bool = False) -> bool:
         # Validate one grid
         counter = [0 for _ in range(10)]
         for index in range(9):
             row = grid // 3 * 3 + index // 3
             col = grid % 3 * 3 + index % 3
             counter[puzzle[row][col]] += 1
+        if strict and counter[0] != 0:
+            return False
         return len(list(filter(lambda x: x > 1, counter[1:]))) == 0
 
     def _find_all_solutions(self, puzzle: list, unknowns: list,
@@ -106,8 +162,7 @@ class SudokuSolver(object):
                 puzzle[row][col] = 0
         return solutions
 
-    @staticmethod
-    def _find_in_common(positions: list, all_solutions: list) -> list:
+    def _find_in_common(self, positions: list, all_solutions: list) -> list:
         # Find what's in common in all solutions
         total = len(positions)
         common = []
@@ -124,7 +179,16 @@ class SudokuSolver(object):
             position = positions[index]
             # Extract cell with unique solution (which is the common solution)
             if len(candidate_dict) == 1:
-                common.append((*position, list(candidate_dict.keys())[0]))
-            else:  # Extract a possible solution for future usage
-                pass
+                move = (*position, list(candidate_dict.keys())[0])
+                common.append(move)
+            else:
+                # Store candidates into possible solutions
+                values = set(candidate_dict.keys())
+                if position in self._possible_solutions:
+                    # Intersect if already exist
+                    self._possible_solutions[position] = values.intersection(
+                        self._possible_solutions[position])
+                else:
+                    self._possible_solutions[position] = values
+        # Solution with solid evidence
         return common
